@@ -12,7 +12,7 @@ from mpl_toolkits import mplot3d
 from matplotlib import pyplot as plt
 import time
 
-from nest_multiscale import generate_poisson_trains, evaluate_fir, calculate_instantaneous_fr
+from nest_multiscale.nest_multiscale import generate_poisson_trains, evaluate_fir, calculate_instantaneous_fr, set_poisson_fr
 
 
 class cereb_control():
@@ -34,7 +34,7 @@ class cereb_control():
         self.min_traj_vel = None
 
         self.robot = robot
-        self.n_joints = len(robot)
+        self.n_joints = len(robot.q)
         assert self.n_joints == len(desired_trajectory), 'Should provide as many trajectory as robot joints'
 
         self.u_R_dim = None   # total number of moments
@@ -107,11 +107,13 @@ class cereb_control():
             if e > 0.:
                 if e > 7.: e = 7.
                 # set the future spike trains (in [tt + T, tt + 2T])
-                self.set_poisson_fr(e, [self.Cereb_class.CTX_pops['US_p'][k]], total_time + self.T)
+                set_poisson_fr(self.nest_, e, [self.Cereb_class.CTX_pops['US_p'][k]], total_time + self.T,
+                               self.T, self.rng)
             elif e < 0.:
                 if e < -7.: e = -7.
                 # set the future spike trains (in [tt + T, tt + 2T])
-                self.set_poisson_fr(-e, [self.Cereb_class.CTX_pops['US_n'][k]], total_time + self.T)
+                set_poisson_fr(self.nest_, -e, [self.Cereb_class.CTX_pops['US_n'][k]], total_time + self.T,
+                               self.T, self.rng)
         self.e_old = self.e_old[1:, :]
 
         # update tau value for next step
@@ -119,11 +121,13 @@ class cereb_control():
                                              time=total_time, T_sample=self.T)
         # new_tau, t_prev = calculate_instantaneous_burst_activity(self.nest_, self.sd_list_R, self.pop_list_to_robot,
         #                                      time=actual_sim_time, t_prev=t_prev)
-        tau, tau_old = evaluate_fir(self.tau_old, new_tau.reshape((1, self.u_R_dim)), kernel=self.kernel_robot)
+        self.tau, self.tau_old = evaluate_fir(self.tau_old, new_tau.reshape((1, self.u_R_dim)), kernel=self.kernel_robot)
         if self.tau_sol is None:
-            tau_sol = np.array([tau])
+            self.tau_sol = np.array([self.tau])
         else:
-            tau_sol = np.concatenate((self.tau_sol, [tau]), axis=0)
+            self.tau_sol = np.concatenate((self.tau_sol, [self.tau]), axis=0)
+
+        # print(self.tau_sol)
 
         # update io
         # new_io = calculate_instantaneous_fr(self.nest_, sd_list_io, list_io,
